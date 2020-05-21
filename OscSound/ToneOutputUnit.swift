@@ -11,9 +11,9 @@ import AudioUnit
 import AVFoundation
 
 final class ToneOutputUnit: NSObject {
-    var auAudioUnit: AUAudioUnit!       /// Placeholder for RemoteIO Audio Unit
+    var auAudioUnit: AUAudioUnit!       /// Placeholder for Audio Unit
     var avActive        = false         /// AVAudioSession active flag
-    var audioRunning    = false         /// RemoteIO Audio Unit running flag
+    var audioRunning    = false         /// Audio Unit running flag
     
     var sampleRate: Double = 44100.0    /// Typical audio sample rate
     
@@ -78,8 +78,9 @@ final class ToneOutputUnit: NSObject {
         }
     }
     
-     private func fillSpeakerBuffer(     // process RemoteIO Buffer for output
-            inputDataList : UnsafeMutablePointer<AudioBufferList>, frameCount : UInt32 ) {
+    // process buffer for output
+     private func fillSpeakerBuffer(inputDataList : UnsafeMutablePointer<AudioBufferList>, frameCount : UInt32 ) {
+        
             let inputDataPtr = UnsafeMutableAudioBufferListPointer(inputDataList)
             let nBuffers = inputDataPtr.count
             let tau = Double.pi * 2.0
@@ -93,22 +94,21 @@ final class ToneOutputUnit: NSObject {
                 if (   self.v0 > 0)
                     && (self.toneCount > 0 )
                 {
-                    // audioStalled = false
-
-//                    var v  = self.v0 ; if v > 32767 { v = 32767 }
-                    let v  = self.v0.truncatingRemainder(dividingBy: 32767)
+                    // Volume of sound corresponds to amplitude of sine wave (or radius of circle)
+                    let amplitude  = self.v0.truncatingRemainder(dividingBy: 32767)
                     let half_sz = Int(mBuffers.mDataByteSize) / 2
 
-                    var a  = self.phY        // capture from object for use inside block
-                    let d  = tau * self.f0 / self.sampleRate     // phase delta
+                    var angle  = self.phY        // restore angle from previous call
+                    let delta  = tau * self.f0 / self.sampleRate     // phase delta
 
                     let bufferPointer = UnsafeMutableRawPointer(mBuffers.mData)
                     if var bptr = bufferPointer {
-                        for i in 0..<(count) {
-                            let u  = sin(a)             // create a sinewave
-//                            a += d ; if (a > tau) { a -= tau }
-                            a = (a + d).truncatingRemainder(dividingBy: tau) //
-                            let x = Int16(v * u + 0.5)      // scale & round
+                        for i in 0 ..< count {
+                            
+                            let u  = sin(angle)             // create a unit sine at angle
+                            let x = Int16(amplitude * u + 0.5)      // scale & round
+                            
+                            angle = (angle + delta).truncatingRemainder(dividingBy: tau) // increment angle and truncate
 
                             if i < half_sz {
                                 bptr.assumingMemoryBound(to: Int16.self).pointee = x
@@ -119,7 +119,7 @@ final class ToneOutputUnit: NSObject {
                         }
                     }
 
-                    self.phY        =   a                   // save sinewave phase
+                    self.phY        =   angle                   // save sinewave phase
                     self.toneCount  -=  Int32(frameCount)   // decrement time remaining
                 } else {
                     // audioStalled = true
